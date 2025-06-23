@@ -53,8 +53,8 @@ func New(options Options) (*Engine, error) {
 	}, nil
 }
 
-// Generate generates domain permutations and returns the results
-func (e *Engine) Generate() ([]Result, error) {
+// generate generates domain permutations and returns the results
+func (e *Engine) generate() ([]Result, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
@@ -67,9 +67,23 @@ func (e *Engine) Generate() ([]Result, error) {
 	domains := e.scanner.Scan(e.fuzzer.Domains())
 
 	// Convert to results
-	results := make([]Result, len(domains))
-	for i, domain := range domains {
-		results[i] = Result{
+	results := make([]Result, 0, len(domains))
+	for _, domain := range domains {
+		// Filter based on registered/unregistered flags
+		if e.options.Registered {
+			// Only include domains that have DNS A records (registered)
+			if len(domain.DNS["A"]) == 0 {
+				continue
+			}
+		}
+		if e.options.Unregistered {
+			// Only include domains that don't have DNS A records (unregistered)
+			if len(domain.DNS["A"]) > 0 {
+				continue
+			}
+		}
+
+		results = append(results, Result{
 			Fuzzer: domain.Fuzzer,
 			Domain: domain.Domain,
 			DNS:    domain.DNS,
@@ -78,14 +92,14 @@ func (e *Engine) Generate() ([]Result, error) {
 			Whois:  domain.Whois,
 			LSH:    domain.LSH,
 			PHash:  domain.PHash,
-		}
+		})
 	}
 
 	return results, nil
 }
 
-// Format formats the results according to the specified format
-func (e *Engine) Format(results []Result) (string, error) {
+// format formats the results according to the specified format
+func (e *Engine) format(results []Result) (string, error) {
 	// Convert results to domains
 	domains := make([]*fuzzer.Domain, len(results))
 	for i, r := range results {
@@ -111,12 +125,9 @@ func (e *Engine) Format(results []Result) (string, error) {
 	return f.Format(e.options.Format), nil
 }
 
-// Run generates permutations and returns formatted results
-func (e *Engine) Run() (string, error) {
-	results, err := e.Generate()
-	if err != nil {
-		return "", err
-	}
 
-	return e.Format(results)
+// GetResults generates permutations and returns the raw Result objects
+func (e *Engine) GetResults() (Results, error) {
+	return e.generate()
 }
+

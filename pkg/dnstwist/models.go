@@ -3,6 +3,7 @@ package dnstwist
 import (
 	"sync"
 
+	"github.com/ducksify/godnstwist/pkg/formatter"
 	"github.com/ducksify/godnstwist/pkg/fuzzer"
 	"github.com/ducksify/godnstwist/pkg/scanner"
 )
@@ -82,6 +83,42 @@ type Result struct {
 	Whois  map[string]string   `json:"whois,omitempty"`
 	LSH    map[string]int      `json:"lsh,omitempty"`
 	PHash  int                 `json:"phash,omitempty"`
+}
+
+// Results represents a slice of Result objects
+type Results []Result
+
+// ToDomain converts a Result to a fuzzer.Domain
+func (r *Result) toDomain() *fuzzer.Domain {
+	return &fuzzer.Domain{
+		Fuzzer: r.Fuzzer,
+		Domain: r.Domain,
+		DNS:    r.DNS,
+		GeoIP:  r.GeoIP,
+		Banner: r.Banner,
+		Whois:  r.Whois,
+		LSH:    r.LSH,
+		PHash:  r.PHash,
+	}
+}
+
+// toDomains converts a slice of Result objects to a slice of fuzzer.Domain objects
+func toDomains(results []Result) []*fuzzer.Domain {
+	domains := make([]*fuzzer.Domain, len(results))
+	for i, result := range results {
+		domains[i] = result.toDomain()
+	}
+	return domains
+}
+
+// Format formats the Results slice according to the specified format
+func (r Results) Format(format string) string {
+	domains := toDomains(r)
+	f := formatter.NewFormatter(domains)
+	if f == nil {
+		return ""
+	}
+	return f.Format(format)
 }
 
 // Engine represents the domain permutation engine

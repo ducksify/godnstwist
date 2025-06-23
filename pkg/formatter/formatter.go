@@ -27,8 +27,10 @@ func (f *Formatter) Format(format string) string {
 		return f.CSV()
 	case "list":
 		return f.List()
-	default:
+	case "cli":
 		return f.CLI()
+	default:
+		return ""
 	}
 }
 

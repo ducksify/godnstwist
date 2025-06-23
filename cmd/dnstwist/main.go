@@ -32,13 +32,14 @@ var (
 				return fmt.Errorf("error creating engine: %v", err)
 			}
 
-			// Run engine
-			output, err := engine.Run()
+			// Get raw results
+			results, err := engine.GetResults()
 			if err != nil {
-				return fmt.Errorf("error running engine: %v", err)
+				return fmt.Errorf("error getting results: %v", err)
 			}
 
-			// Print output
+			// Format and output results
+			output := results.Format(options.Format)
 			fmt.Print(output)
 			return nil
 		},
