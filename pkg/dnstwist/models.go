@@ -39,6 +39,9 @@ type Options struct {
 	// MXCheck checks if MX host can be used to intercept emails
 	MXCheck bool
 
+	// NSCheck checks for nameserver records
+	NSCheck bool
+
 	// Output saves output to file
 	Output string
 
@@ -85,8 +88,91 @@ type Result struct {
 	PHash  int                 `json:"phash,omitempty"`
 }
 
+// GetARecords returns A records for the domain
+func (r *Result) GetARecords() []string {
+	if r.DNS == nil {
+		return nil
+	}
+	return r.DNS["A"]
+}
+
+// GetMXRecords returns MX records for the domain
+func (r *Result) GetMXRecords() []string {
+	if r.DNS == nil {
+		return nil
+	}
+	return r.DNS["MX"]
+}
+
+// GetNSRecords returns NS records for the domain
+func (r *Result) GetNSRecords() []string {
+	if r.DNS == nil {
+		return nil
+	}
+	return r.DNS["NS"]
+}
+
+// HasARecords returns true if the domain has A records
+func (r *Result) HasARecords() bool {
+	return len(r.GetARecords()) > 0
+}
+
+// HasMXRecords returns true if the domain has MX records
+func (r *Result) HasMXRecords() bool {
+	return len(r.GetMXRecords()) > 0
+}
+
+// HasNSRecords returns true if the domain has NS records
+func (r *Result) HasNSRecords() bool {
+	return len(r.GetNSRecords()) > 0
+}
+
 // Results represents a slice of Result objects
 type Results []Result
+
+// GetDomainsWithARecords returns only results that have A records
+func (r Results) GetDomainsWithARecords() Results {
+	var filtered Results
+	for _, result := range r {
+		if result.HasARecords() {
+			filtered = append(filtered, result)
+		}
+	}
+	return filtered
+}
+
+// GetDomainsWithMXRecords returns only results that have MX records
+func (r Results) GetDomainsWithMXRecords() Results {
+	var filtered Results
+	for _, result := range r {
+		if result.HasMXRecords() {
+			filtered = append(filtered, result)
+		}
+	}
+	return filtered
+}
+
+// GetDomainsWithNSRecords returns only results that have NS records
+func (r Results) GetDomainsWithNSRecords() Results {
+	var filtered Results
+	for _, result := range r {
+		if result.HasNSRecords() {
+			filtered = append(filtered, result)
+		}
+	}
+	return filtered
+}
+
+// GetDomainsWithoutARecords returns only results that don't have A records
+func (r Results) GetDomainsWithoutARecords() Results {
+	var filtered Results
+	for _, result := range r {
+		if !result.HasARecords() {
+			filtered = append(filtered, result)
+		}
+	}
+	return filtered
+}
 
 // ToDomain converts a Result to a fuzzer.Domain
 func (r *Result) toDomain() *fuzzer.Domain {

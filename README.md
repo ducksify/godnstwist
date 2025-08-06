@@ -393,6 +393,20 @@ type Result struct {
     LSH    map[string]int      // LSH similarity scores
     PHash  int                 // Perceptual hash for visual similarity
 }
+
+// Convenience methods for accessing DNS records:
+func (r *Result) GetARecords() []string      // Returns A records
+func (r *Result) GetMXRecords() []string     // Returns MX records
+func (r *Result) GetNSRecords() []string     // Returns NS records
+func (r *Result) HasARecords() bool          // Returns true if domain has A records
+func (r *Result) HasMXRecords() bool         // Returns true if domain has MX records
+func (r *Result) HasNSRecords() bool         // Returns true if domain has NS records
+
+// Results filtering methods:
+func (r Results) GetDomainsWithARecords() Results      // Returns only registered domains
+func (r Results) GetDomainsWithoutARecords() Results   // Returns only unregistered domains
+func (r Results) GetDomainsWithMXRecords() Results     // Returns domains with MX records
+func (r Results) GetDomainsWithNSRecords() Results     // Returns domains with NS records
 ```
 
 ## Performance Tuning
@@ -436,5 +450,141 @@ go install github.com/ducksify/godnstwist/cmd/dnstwist@latest
 
 Use the CLI tool:
 ```bash
+# Basic usage
+dnstwist -d example.com
+
+# Check for MX and NS records
+dnstwist -d example.com --mxcheck --nscheck
+
+# Advanced usage with multiple features
 dnstwist -d example.com -f json -t 10 --banners --geoip
+```
+
+### Working with Results
+
+Access DNS records and filter results:
+
+```go
+package main
+
+import (
+    "fmt"
+    "log"
+
+    "github.com/ducksify/godnstwist/pkg/dnstwist"
+)
+
+func main() {
+    options := dnstwist.Options{
+        Domain:  "example.com",
+        Threads: 5,
+        Fuzzers: "addition,omission",
+    }
+
+    engine, err := dnstwist.New(options)
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    results, err := engine.GetResults()
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    // Access individual results
+    for _, result := range results {
+        fmt.Printf("Domain: %s\n", result.Domain)
+        
+        // Get A records
+        if aRecords := result.GetARecords(); len(aRecords) > 0 {
+            fmt.Printf("  A Records: %v\n", aRecords)
+        }
+        
+        // Get MX records
+        if mxRecords := result.GetMXRecords(); len(mxRecords) > 0 {
+            fmt.Printf("  MX Records: %v\n", mxRecords)
+        }
+        
+        // Get NS records
+        if nsRecords := result.GetNSRecords(); len(nsRecords) > 0 {
+            fmt.Printf("  NS Records: %v\n", nsRecords)
+        }
+        
+        // Check if domain is registered
+        if result.HasARecords() {
+            fmt.Printf("  Status: Registered\n")
+        } else {
+            fmt.Printf("  Status: Unregistered\n")
+        }
+    }
+
+    // Filter results
+    registered := results.GetDomainsWithARecords()
+    unregistered := results.GetDomainsWithoutARecords()
+    withMX := results.GetDomainsWithMXRecords()
+    withNS := results.GetDomainsWithNSRecords()
+
+    fmt.Printf("\nSummary:\n")
+    fmt.Printf("  Total domains: %d\n", len(results))
+    fmt.Printf("  Registered: %d\n", len(registered))
+    fmt.Printf("  Unregistered: %d\n", len(unregistered))
+    fmt.Printf("  With MX records: %d\n", len(withMX))
+    fmt.Printf("  With NS records: %d\n", len(withNS))
+}
+```
+
+### Advanced Result Processing
+
+```go
+package main
+
+import (
+    "fmt"
+    "log"
+
+    "github.com/ducksify/godnstwist/pkg/dnstwist"
+)
+
+func main() {
+    options := dnstwist.Options{
+        Domain:      "example.com",
+        Threads:     10,
+        Format:      "json",
+        Fuzzers:     "addition,omission,transposition,bitsquatting",
+        Banners:     true,
+        GeoIP:       true,
+        MXCheck:     true,
+        NSCheck:     true,
+        Whois:       true,
+        Nameservers: "8.8.8.8:53,1.1.1.1:53",
+        UserAgent:   "Mozilla/5.0 Custom Bot",
+    }
+
+    engine, err := dnstwist.New(options)
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    results, err := engine.GetResults()
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    // Process results
+    for _, result := range results {
+        fmt.Printf("Domain: %s (Fuzzer: %s)\n", result.Domain, result.Fuzzer)
+        
+        if len(result.DNS["A"]) > 0 {
+            fmt.Printf("  IP: %s\n", result.DNS["A"][0])
+        }
+        
+        if result.GeoIP != "" {
+            fmt.Printf("  Location: %s\n", result.GeoIP)
+        }
+        
+        if result.Banner["http"] != "" {
+            fmt.Printf("  HTTP Banner: %s\n", result.Banner["http"])
+        }
+    }
+}
 ```

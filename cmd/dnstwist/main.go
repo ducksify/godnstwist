@@ -65,6 +65,7 @@ func init() {
 	rootCmd.Flags().StringVarP(&options.LSH, "lsh", "", "", "Evaluate web page similarity with LSH algorithm (ssdeep, tlsh)")
 	rootCmd.Flags().StringVarP(&options.LSHURL, "lshurl", "", "", "Override URL to fetch the original web page from")
 	rootCmd.Flags().BoolVarP(&options.MXCheck, "mxcheck", "m", false, "Check if MX host can be used to intercept emails")
+	rootCmd.Flags().BoolVarP(&options.NSCheck, "nscheck", "x", false, "Check for nameserver records")
 	rootCmd.Flags().StringVarP(&options.Output, "output", "o", "", "Save output to file")
 	rootCmd.Flags().BoolVarP(&options.Registered, "registered", "r", false, "Show only registered domain names")
 	rootCmd.Flags().BoolVarP(&options.Unregistered, "unregistered", "u", false, "Show only unregistered domain names")

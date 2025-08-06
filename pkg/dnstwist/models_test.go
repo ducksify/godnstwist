@@ -489,3 +489,126 @@ func TestResult_Interfaces(t *testing.T) {
 		t.Errorf("Results slice length = %v, want %v", len(results), 1)
 	}
 }
+
+func TestResult_DNSMethods(t *testing.T) {
+	result := Result{
+		Fuzzer: "test",
+		Domain: "test.com",
+		DNS: map[string][]string{
+			"A":  {"192.0.2.1", "192.0.2.2"},
+			"MX": {"mail.test.com.", "backup.test.com."},
+			"NS": {"ns1.test.com.", "ns2.test.com."},
+		},
+	}
+
+	// Test A record methods
+	aRecords := result.GetARecords()
+	if len(aRecords) != 2 {
+		t.Errorf("GetARecords() returned %d records, want 2", len(aRecords))
+	}
+	if !result.HasARecords() {
+		t.Error("HasARecords() should return true")
+	}
+
+	// Test MX record methods
+	mxRecords := result.GetMXRecords()
+	if len(mxRecords) != 2 {
+		t.Errorf("GetMXRecords() returned %d records, want 2", len(mxRecords))
+	}
+	if !result.HasMXRecords() {
+		t.Error("HasMXRecords() should return true")
+	}
+
+	// Test NS record methods
+	nsRecords := result.GetNSRecords()
+	if len(nsRecords) != 2 {
+		t.Errorf("GetNSRecords() returned %d records, want 2", len(nsRecords))
+	}
+	if !result.HasNSRecords() {
+		t.Error("HasNSRecords() should return true")
+	}
+
+	// Test with nil DNS
+	result.DNS = nil
+	if result.GetARecords() != nil {
+		t.Error("GetARecords() should return nil for nil DNS")
+	}
+	if result.GetMXRecords() != nil {
+		t.Error("GetMXRecords() should return nil for nil DNS")
+	}
+	if result.GetNSRecords() != nil {
+		t.Error("GetNSRecords() should return nil for nil DNS")
+	}
+	if result.HasARecords() {
+		t.Error("HasARecords() should return false for nil DNS")
+	}
+	if result.HasMXRecords() {
+		t.Error("HasMXRecords() should return false for nil DNS")
+	}
+	if result.HasNSRecords() {
+		t.Error("HasNSRecords() should return false for nil DNS")
+	}
+}
+
+func TestResults_FilteringMethods(t *testing.T) {
+	results := Results{
+		{
+			Fuzzer: "test1",
+			Domain: "test1.com",
+			DNS: map[string][]string{
+				"A": {"192.0.2.1"},
+			},
+		},
+		{
+			Fuzzer: "test2",
+			Domain: "test2.com",
+			DNS: map[string][]string{
+				"MX": {"mail.test2.com."},
+			},
+		},
+		{
+			Fuzzer: "test3",
+			Domain: "test3.com",
+			DNS: map[string][]string{
+				"A":  {"192.0.2.3"},
+				"MX": {"mail.test3.com."},
+				"NS": {"ns1.test3.com."},
+			},
+		},
+		{
+			Fuzzer: "test4",
+			Domain: "test4.com",
+			DNS:    map[string][]string{},
+		},
+		{
+			Fuzzer: "test5",
+			Domain: "test5.com",
+			DNS: map[string][]string{
+				"NS": {"ns1.test5.com.", "ns2.test5.com."},
+			},
+		},
+	}
+
+	// Test filtering by A records
+	withARecords := results.GetDomainsWithARecords()
+	if len(withARecords) != 2 {
+		t.Errorf("GetDomainsWithARecords() returned %d results, want 2", len(withARecords))
+	}
+
+	withoutARecords := results.GetDomainsWithoutARecords()
+	if len(withoutARecords) != 3 {
+		t.Errorf("GetDomainsWithoutARecords() returned %d results, want 3", len(withoutARecords))
+	}
+
+	// Test filtering by MX records
+	withMXRecords := results.GetDomainsWithMXRecords()
+	if len(withMXRecords) != 2 {
+		t.Errorf("GetDomainsWithMXRecords() returned %d results, want 2", len(withMXRecords))
+	}
+
+	// Test filtering by NS records
+	withNSRecords := results.GetDomainsWithNSRecords()
+	if len(withNSRecords) != 2 {
+		t.Errorf("GetDomainsWithNSRecords() returned %d results, want 2", len(withNSRecords))
+	}
+}

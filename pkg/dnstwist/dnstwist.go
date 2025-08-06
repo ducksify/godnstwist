@@ -37,6 +37,7 @@ func New(options Options) (*Engine, error) {
 		GeoIP:       options.GeoIP,
 		LSH:         options.LSH,
 		MXCheck:     options.MXCheck,
+		NSCheck:     options.NSCheck,
 		Nameservers: options.Nameservers,
 		PHash:       options.PHash,
 		Screenshots: options.Screenshots,
@@ -125,9 +126,7 @@ func (e *Engine) format(results []Result) (string, error) {
 	return f.Format(e.options.Format), nil
 }
 
-
 // GetResults generates permutations and returns the raw Result objects
 func (e *Engine) GetResults() (Results, error) {
 	return e.generate()
 }
-

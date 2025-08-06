@@ -26,6 +26,7 @@ type Config struct {
 	GeoIP       bool
 	LSH         string
 	MXCheck     bool
+	NSCheck     bool
 	Nameservers string
 	PHash       bool
 	Screenshots string
@@ -104,10 +105,17 @@ func (s *Scanner) scanDomain(domain *fuzzer.Domain) *fuzzer.Domain {
 	// MX record lookup
 	if s.config.MXCheck {
 		if err := s.lookupMX(domain); err == nil {
-			if banner, err := s.getSMTPBanner(domain.DNS["MX"][0]); err == nil {
-				domain.Banner["smtp"] = banner
+			if mxRecords := domain.DNS["MX"]; len(mxRecords) > 0 {
+				if banner, err := s.getSMTPBanner(mxRecords[0]); err == nil {
+					domain.Banner["smtp"] = banner
+				}
 			}
 		}
+	}
+
+	// NS record lookup
+	if s.config.NSCheck {
+		s.lookupNS(domain)
 	}
 
 	return domain
@@ -153,6 +161,29 @@ func (s *Scanner) lookupMX(domain *fuzzer.Domain) error {
 	for _, ans := range r.Answer {
 		if mx, ok := ans.(*dns.MX); ok {
 			domain.DNS["MX"] = append(domain.DNS["MX"], mx.Mx)
+		}
+	}
+
+	return nil
+}
+
+func (s *Scanner) lookupNS(domain *fuzzer.Domain) error {
+	m := new(dns.Msg)
+	m.SetQuestion(dns.Fqdn(domain.Domain), dns.TypeNS)
+	m.RecursionDesired = true
+
+	r, _, err := s.dnsClient.Exchange(m, s.nameserver)
+	if err != nil {
+		return err
+	}
+
+	if r.Rcode != dns.RcodeSuccess {
+		return fmt.Errorf("DNS lookup failed with code %d", r.Rcode)
+	}
+
+	for _, ans := range r.Answer {
+		if ns, ok := ans.(*dns.NS); ok {
+			domain.DNS["NS"] = append(domain.DNS["NS"], ns.Ns)
 		}
 	}
 

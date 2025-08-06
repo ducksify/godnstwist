@@ -47,14 +47,32 @@ func (f *Formatter) csv() string {
 	writer := csv.NewWriter(&buf)
 
 	// Write header
-	header := []string{"fuzzer", "domain"}
+	header := []string{"fuzzer", "domain", "a_records", "mx_records", "ns_records"}
 	writer.Write(header)
 
 	// Write data
 	for _, domain := range f.domains {
+		aRecords := ""
+		if a := domain.DNS["A"]; len(a) > 0 {
+			aRecords = strings.Join(a, ";")
+		}
+
+		mxRecords := ""
+		if mx := domain.DNS["MX"]; len(mx) > 0 {
+			mxRecords = strings.Join(mx, ";")
+		}
+
+		nsRecords := ""
+		if ns := domain.DNS["NS"]; len(ns) > 0 {
+			nsRecords = strings.Join(ns, ";")
+		}
+
 		record := []string{
 			domain.Fuzzer,
 			domain.Domain,
+			aRecords,
+			mxRecords,
+			nsRecords,
 		}
 		writer.Write(record)
 	}
@@ -98,6 +116,16 @@ func (f *Formatter) cli() string {
 		// DNS A records
 		if a := domain.DNS["A"]; len(a) > 0 {
 			info = append(info, strings.Join(a, ";"))
+		}
+
+		// DNS MX records
+		if mx := domain.DNS["MX"]; len(mx) > 0 {
+			info = append(info, fmt.Sprintf("MX:%s", strings.Join(mx, ";")))
+		}
+
+		// DNS NS records
+		if ns := domain.DNS["NS"]; len(ns) > 0 {
+			info = append(info, fmt.Sprintf("NS:%s", strings.Join(ns, ";")))
 		}
 
 		// GeoIP

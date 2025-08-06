@@ -605,6 +605,74 @@ func TestScanner_scanDomain_WithInvalidDomain(t *testing.T) {
 	}
 }
 
+func TestScanner_lookupNS(t *testing.T) {
+	config := &Config{
+		All:         false,
+		Banners:     false,
+		GeoIP:       false,
+		MXCheck:     false,
+		NSCheck:     false,
+		Nameservers: "8.8.8.8:53",
+		UserAgent:   "Mozilla/5.0",
+		Threads:     4,
+	}
+
+	s := NewScanner(config)
+	if s == nil {
+		t.Fatal("Failed to create scanner")
+	}
+
+	domain := &fuzzer.Domain{
+		Fuzzer: "original",
+		Domain: "example.com",
+		DNS:    make(map[string][]string),
+		Banner: make(map[string]string),
+		Whois:  make(map[string]string),
+		LSH:    make(map[string]int),
+	}
+
+	err := s.lookupNS(domain)
+	if err != nil {
+		t.Fatalf("lookupNS() failed: %v", err)
+	}
+
+	if len(domain.DNS["NS"]) == 0 {
+		t.Error("lookupNS() returned no NS records")
+	}
+}
+
+func TestScanner_lookupNS_InvalidDomain(t *testing.T) {
+	config := &Config{
+		All:         false,
+		Banners:     false,
+		GeoIP:       false,
+		MXCheck:     false,
+		NSCheck:     false,
+		Nameservers: "8.8.8.8:53",
+		UserAgent:   "Mozilla/5.0",
+		Threads:     4,
+	}
+
+	s := NewScanner(config)
+	if s == nil {
+		t.Fatal("Failed to create scanner")
+	}
+
+	domain := &fuzzer.Domain{
+		Fuzzer: "original",
+		Domain: "invalid-domain-that-does-not-exist-12345.com",
+		DNS:    make(map[string][]string),
+		Banner: make(map[string]string),
+		Whois:  make(map[string]string),
+		LSH:    make(map[string]int),
+	}
+
+	err := s.lookupNS(domain)
+	if err == nil {
+		t.Error("Expected lookupNS() to fail for invalid domain")
+	}
+}
+
 // Mock DNS server for testing
 func startMockDNSServer(t *testing.T) (string, func()) {
 	server := &dns.Server{
@@ -628,6 +696,18 @@ func startMockDNSServer(t *testing.T) (string, func()) {
 				msg.Answer = append(msg.Answer, &dns.MX{
 					Hdr: dns.RR_Header{Name: "example.com.", Rrtype: dns.TypeMX, Class: dns.ClassINET, Ttl: 300},
 					Mx:  "mail.example.com.",
+				})
+			}
+
+			// Add NS record for example.com
+			if r.Question[0].Name == "example.com." && r.Question[0].Qtype == dns.TypeNS {
+				msg.Answer = append(msg.Answer, &dns.NS{
+					Hdr: dns.RR_Header{Name: "example.com.", Rrtype: dns.TypeNS, Class: dns.ClassINET, Ttl: 300},
+					Ns:  "ns1.example.com.",
+				})
+				msg.Answer = append(msg.Answer, &dns.NS{
+					Hdr: dns.RR_Header{Name: "example.com.", Rrtype: dns.TypeNS, Class: dns.ClassINET, Ttl: 300},
+					Ns:  "ns2.example.com.",
 				})
 			}
 
@@ -700,5 +780,15 @@ func TestScanner_WithMockDNSServer(t *testing.T) {
 
 	if len(domain.DNS["MX"]) == 0 {
 		t.Error("lookupMX() returned no MX records")
+	}
+
+	// Test NS record lookup
+	err = s.lookupNS(domain)
+	if err != nil {
+		t.Fatalf("lookupNS() failed: %v", err)
+	}
+
+	if len(domain.DNS["NS"]) == 0 {
+		t.Error("lookupNS() returned no NS records")
 	}
 }
