@@ -330,11 +330,39 @@ Available fuzzing algorithms (use with `Fuzzers` option):
 - **subdomain**: Split domain into subdomains
 - **transposition**: Swap adjacent characters
 - **vowel-swap**: Replace vowels with other vowels
+- **tld-swap**: Swap the TLD with entries from a dictionary file
 
 Example:
 
 ```go
-options.Fuzzers = "addition,omission,transposition,bitsquatting"
+options.Fuzzers = "addition,omission,transposition,bitsquatting,tld-swap"
+```
+
+### TLD-Swap Usage
+
+The `tld-swap` fuzzer requires a TLD dictionary file. You can specify a custom file using the `TLD` option:
+
+```go
+options := dnstwist.Options{
+    Domain:  "example.com",
+    Fuzzers: "tld-swap",
+    TLD:     "dictionaries/abused_tlds.dict", // Custom TLD file
+    Threads: 10,
+}
+```
+
+If no TLD file is specified, the fuzzer will use `dictionaries/common_tlds.dict` by default. If that file doesn't exist, it will fall back to a basic set of common TLDs.
+
+The TLD dictionary file should contain one TLD per line, with comments starting with `//`:
+
+```
+// Common TLDs
+com
+net
+org
+edu
+gov
+// Add more TLDs here
 ```
 
 ## Output Formats

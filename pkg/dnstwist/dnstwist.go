@@ -2,6 +2,7 @@ package dnstwist
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/ducksify/godnstwist/internal/formatter"
 	"github.com/ducksify/godnstwist/internal/fuzzer"
@@ -28,6 +29,13 @@ func New(options Options) (*Engine, error) {
 	f := fuzzer.NewFuzzer(options.Domain)
 	if f == nil {
 		return nil, fmt.Errorf("invalid domain name: %s", options.Domain)
+	}
+
+	// Set TLD files if specified
+	if len(options.TLD) > 0 {
+		// Join multiple TLD files with commas
+		tldFiles := strings.Join(options.TLD, ",")
+		f.SetTLDFile(tldFiles)
 	}
 
 	// Initialize scanner

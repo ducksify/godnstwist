@@ -76,7 +76,7 @@ func TestOptions_Validation(t *testing.T) {
 				Screenshots:  "/tmp/screenshots",
 				Threads:      10,
 				Whois:        true,
-				TLD:          "tlds.txt",
+				TLD:          []string{"tlds.txt"},
 				Nameservers:  "8.8.8.8:53,1.1.1.1:53",
 				UserAgent:    "Mozilla/5.0",
 			},

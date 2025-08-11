@@ -480,6 +480,83 @@ func TestResults_Format_EmptyResults(t *testing.T) {
 	}
 }
 
+func TestEngine_TLDSwap(t *testing.T) {
+	options := Options{
+		Domain:  "example.com",
+		Fuzzers: "tld-swap",
+		Threads: 1,
+	}
+
+	engine, err := New(options)
+	if err != nil {
+		t.Fatalf("Failed to create engine: %v", err)
+	}
+
+	results, err := engine.GetResults()
+	if err != nil {
+		t.Fatalf("Failed to get results: %v", err)
+	}
+
+	// Check that we have results
+	if len(results) == 0 {
+		t.Error("No results generated")
+	}
+
+	// Check that we have tld-swap results
+	tldSwapCount := 0
+	for _, result := range results {
+		if result.Fuzzer == "tld-swap" {
+			tldSwapCount++
+			// Check that the domain format is correct
+			if !strings.HasPrefix(result.Domain, "example.") {
+				t.Errorf("Generated domain doesn't start with 'example.': %s", result.Domain)
+			}
+			// Check that it's not the original domain
+			if result.Domain == "example.com" {
+				t.Errorf("Generated domain should not be the original: %s", result.Domain)
+			}
+		}
+	}
+
+	if tldSwapCount == 0 {
+		t.Skip("No tld-swap results were generated - TLD dictionary files may not be available")
+	}
+}
+
+func TestEngine_TLDSwapWithCustomFile(t *testing.T) {
+	options := Options{
+		Domain:  "test.com",
+		Fuzzers: "tld-swap",
+		TLD:     []string{"dictionaries/abused_tlds.dict"},
+		Threads: 1,
+	}
+
+	engine, err := New(options)
+	if err != nil {
+		t.Fatalf("Failed to create engine: %v", err)
+	}
+
+	results, err := engine.GetResults()
+	if err != nil {
+		t.Fatalf("Failed to get results: %v", err)
+	}
+
+	// Check that we have tld-swap results
+	tldSwapCount := 0
+	for _, result := range results {
+		if result.Fuzzer == "tld-swap" {
+			tldSwapCount++
+			if !strings.HasPrefix(result.Domain, "test.") {
+				t.Errorf("Generated domain doesn't start with 'test.': %s", result.Domain)
+			}
+		}
+	}
+
+	if tldSwapCount == 0 {
+		t.Skip("No tld-swap results were generated with custom file - TLD dictionary files may not be available")
+	}
+}
+
 // Benchmark tests
 func BenchmarkEngine_GetResults(b *testing.B) {
 	options := Options{

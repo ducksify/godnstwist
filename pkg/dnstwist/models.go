@@ -66,8 +66,8 @@ type Options struct {
 	// Whois looks up WHOIS database for creation date and registrar
 	Whois bool
 
-	// TLD swaps TLD for the original domain from file
-	TLD string
+	// TLD swaps TLD for the original domain from files (multiple files supported)
+	TLD []string
 
 	// Nameservers specifies DNS or DoH servers to query (comma-separated)
 	Nameservers string

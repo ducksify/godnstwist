@@ -1,7 +1,9 @@
 package fuzzer
 
 import (
+	"bufio"
 	"fmt"
+	"os"
 	"regexp"
 	"strings"
 	"sync"
@@ -26,6 +28,7 @@ type Fuzzer struct {
 	tld           string
 	domains       []*Domain
 	mu            sync.RWMutex
+	tldFile       string // Add TLD file path
 }
 
 func NewFuzzer(domain string) *Fuzzer {
@@ -46,6 +49,11 @@ func NewFuzzer(domain string) *Fuzzer {
 	}
 }
 
+// SetTLDFile sets the TLD dictionary file path
+func (f *Fuzzer) SetTLDFile(tldFile string) {
+	f.tldFile = tldFile
+}
+
 func (f *Fuzzer) Generate(fuzzers string) error {
 	// Add original domain
 	f.addDomain("original", fmt.Sprintf("%s.%s", f.domain, f.tld))
@@ -62,6 +70,8 @@ func (f *Fuzzer) Generate(fuzzers string) error {
 
 	// Apply each fuzzer
 	for _, fuzzer := range fuzzerList {
+		fuzzer = strings.TrimSpace(fuzzer) // Trim whitespace
+
 		switch fuzzer {
 		case "addition":
 			f.addition()
@@ -85,6 +95,8 @@ func (f *Fuzzer) Generate(fuzzers string) error {
 			f.transposition()
 		case "vowel-swap":
 			f.vowelSwap()
+		case "tld-swap":
+			f.tldSwap()
 		}
 	}
 
@@ -282,6 +294,92 @@ func (f *Fuzzer) vowelSwap() {
 			}
 		}
 	}
+}
+
+func (f *Fuzzer) tldSwap() {
+	if f.tldFile == "" {
+		// Use default TLD dictionary if no file specified
+		f.tldFile = "dictionaries/common_tlds.dict"
+	}
+
+	// Parse multiple TLD files (comma-separated)
+	tldFiles := strings.Split(f.tldFile, ",")
+	var allTlds []string
+
+	// Read TLDs from each file
+	for _, file := range tldFiles {
+		file = strings.TrimSpace(file)
+		if file == "" {
+			continue
+		}
+
+		tlds, err := f.readTLDDictionary(file)
+		if err != nil {
+			// Skip files that can't be read
+			continue
+		}
+
+		// Add TLDs from this file to the combined list
+		allTlds = append(allTlds, tlds...)
+	}
+
+	// Remove duplicates
+	tldMap := make(map[string]bool)
+	var uniqueTlds []string
+	for _, tld := range allTlds {
+		if !tldMap[tld] {
+			tldMap[tld] = true
+			uniqueTlds = append(uniqueTlds, tld)
+		}
+	}
+
+	// Generate domains with different TLDs
+	for _, tld := range uniqueTlds {
+		// Skip the original TLD
+		if tld == f.tld {
+			continue
+		}
+
+		// Create domain with new TLD
+		newDomain := fmt.Sprintf("%s.%s", f.domain, tld)
+		f.addDomain("tld-swap", newDomain)
+	}
+}
+
+// readTLDDictionary reads TLDs from a dictionary file
+func (f *Fuzzer) readTLDDictionary(filename string) ([]string, error) {
+	file, err := os.Open(filename)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	var tlds []string
+	scanner := bufio.NewScanner(file)
+
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+
+		// Skip empty lines and comments
+		if line == "" || strings.HasPrefix(line, "//") {
+			continue
+		}
+
+		// Remove any trailing comments
+		if idx := strings.Index(line, "//"); idx != -1 {
+			line = strings.TrimSpace(line[:idx])
+		}
+
+		if line != "" {
+			tlds = append(tlds, line)
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+
+	return tlds, nil
 }
 
 func (f *Fuzzer) Domains() []*Domain {

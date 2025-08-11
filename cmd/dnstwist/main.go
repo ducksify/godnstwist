@@ -74,7 +74,7 @@ func init() {
 	rootCmd.Flags().StringVarP(&options.Screenshots, "screenshots", "s", "", "Save web page screenshots into directory")
 	rootCmd.Flags().IntVarP(&options.Threads, "threads", "t", 10, "Number of concurrent threads")
 	rootCmd.Flags().BoolVarP(&options.Whois, "whois", "w", false, "Look up WHOIS database for creation date and registrar")
-	rootCmd.Flags().StringVarP(&options.TLD, "tld", "", "", "Swap TLD for the original domain from file")
+	rootCmd.Flags().StringSliceVarP(&options.TLD, "tld", "", []string{}, "Swap TLD for the original domain from files (can be specified multiple times)")
 	rootCmd.Flags().StringVarP(&options.Nameservers, "nameservers", "n", "", "DNS or DoH servers to query (comma-separated)")
 	rootCmd.Flags().StringVarP(&options.UserAgent, "useragent", "", "Mozilla/5.0 dnstwist", "User-Agent string")
 
