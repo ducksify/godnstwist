@@ -69,6 +69,7 @@ func init() {
 	rootCmd.Flags().StringVarP(&options.Output, "output", "o", "", "Save output to file")
 	rootCmd.Flags().BoolVarP(&options.Registered, "registered", "r", false, "Show only registered domain names")
 	rootCmd.Flags().BoolVarP(&options.Unregistered, "unregistered", "u", false, "Show only unregistered domain names")
+	rootCmd.Flags().StringVarP(&options.RegisteredBy, "registered-by", "", "A", "Record type to determine registration (A or NS)")
 	rootCmd.Flags().BoolVarP(&options.PHash, "phash", "p", false, "Render web pages and evaluate visual similarity")
 	rootCmd.Flags().StringVarP(&options.PHashURL, "phashurl", "", "", "Override URL to render the original web page from")
 	rootCmd.Flags().StringVarP(&options.Screenshots, "screenshots", "s", "", "Save web page screenshots into directory")

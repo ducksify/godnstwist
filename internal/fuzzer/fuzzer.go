@@ -7,19 +7,24 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+
+	"golang.org/x/net/idna"
+	"golang.org/x/net/publicsuffix"
 )
 
-var validFQDNRegex = regexp.MustCompile(`^([a-z0-9-]{1,63}\.)+[a-z]{2,63}$`)
+var validFQDNRegex = regexp.MustCompile(`^([a-z0-9а-яα-ω-]{1,63}\.)+[a-z]{2,63}$`)
 
 type Domain struct {
-	Fuzzer string
-	Domain string
-	DNS    map[string][]string
-	GeoIP  string
-	Banner map[string]string
-	Whois  map[string]string
-	LSH    map[string]int
-	PHash  int
+	Fuzzer   string
+	Domain   string
+	Punycode string
+	Cyrillic bool
+	DNS      map[string][]string
+	GeoIP    string
+	Banner   map[string]string
+	Whois    map[string]string
+	LSH      map[string]int
+	PHash    int
 }
 
 type Fuzzer struct {
@@ -32,6 +37,31 @@ type Fuzzer struct {
 }
 
 func NewFuzzer(domain string) *Fuzzer {
+	// Normalize input
+	domain = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(domain), "."))
+	if domain == "" {
+		return nil
+	}
+
+	// Use Public Suffix List to support multi-label TLDs (e.g., com.au)
+	if etld1, err := publicsuffix.EffectiveTLDPlusOne(domain); err == nil {
+		psl, _ := publicsuffix.PublicSuffix(domain)
+		if psl != "" {
+			// Extract second-level registrable label and optional subdomain
+			domainPart := strings.TrimSuffix(etld1, "."+psl)
+			subdomain := strings.TrimSuffix(domain, "."+etld1)
+			subdomain = strings.TrimSuffix(subdomain, ".")
+
+			return &Fuzzer{
+				subdomainPart: subdomain,
+				domain:        domainPart,
+				tld:           psl,
+				domains:       make([]*Domain, 0),
+			}
+		}
+	}
+
+	// Fallback for unknown suffixes
 	parts := strings.Split(domain, ".")
 	if len(parts) < 2 {
 		return nil
@@ -108,17 +138,50 @@ func (f *Fuzzer) addDomain(fuzzer, domain string) {
 		return
 	}
 
+	// Generate Punycode for domains with non-ASCII characters
+	punycode := domain
+	if containsNonASCII(domain) {
+		if punycodeDomain, err := idna.ToASCII(domain); err == nil {
+			punycode = punycodeDomain
+		}
+	}
+
+	// Check if domain contains Cyrillic characters
+	isCyrillic := containsCyrillic(domain)
+
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
 	f.domains = append(f.domains, &Domain{
-		Fuzzer: fuzzer,
-		Domain: domain,
-		DNS:    make(map[string][]string),
-		Banner: make(map[string]string),
-		Whois:  make(map[string]string),
-		LSH:    make(map[string]int),
+		Fuzzer:   fuzzer,
+		Domain:   domain,
+		Punycode: punycode,
+		Cyrillic: isCyrillic,
+		DNS:      make(map[string][]string),
+		Banner:   make(map[string]string),
+		Whois:    make(map[string]string),
+		LSH:      make(map[string]int),
 	})
+}
+
+// containsNonASCII checks if a string contains non-ASCII characters
+func containsNonASCII(s string) bool {
+	for _, r := range s {
+		if r > 127 {
+			return true
+		}
+	}
+	return false
+}
+
+// containsCyrillic checks if a string contains Cyrillic characters
+func containsCyrillic(s string) bool {
+	for _, r := range s {
+		if r >= 0x0400 && r <= 0x04FF { // Cyrillic Unicode block
+			return true
+		}
+	}
+	return false
 }
 
 func (f *Fuzzer) addition() {
@@ -148,32 +211,34 @@ func (f *Fuzzer) bitsquatting() {
 func (f *Fuzzer) homoglyph() {
 	// Replace characters with similar looking ones
 	homoglyphs := map[rune][]rune{
-		'a': {'а', 'α', 'а'},
+		'a': {'а', 'α'},
 		'b': {'ь', 'в'},
 		'c': {'с', 'ç'},
-		'd': {'ԁ', 'd'},
-		'e': {'е', 'е'},
-		'g': {'ɡ', 'g'},
-		'h': {'һ', 'h'},
-		'i': {'і', 'i'},
-		'j': {'ј', 'j'},
-		'k': {'к', 'k'},
-		'l': {'ӏ', 'l'},
-		'm': {'м', 'm'},
-		'n': {'п', 'n'},
+		'd': {'ԁ'},
+		'e': {'е'},
+		'g': {'ɡ'},
+		'h': {'һ'},
+		// Include ASCII confusable '1' for 'i'
+		'i': {'і', '1', 'l'},
+		'j': {'ј'},
+		'k': {'к'},
+		'l': {'ӏ'},
+		'm': {'м'},
+		'n': {'п'},
 		'o': {'о', 'ο'},
-		'p': {'р', 'p'},
-		'q': {'ԛ', 'q'},
-		's': {'ѕ', 's'},
-		't': {'т', 't'},
-		'u': {'υ', 'u'},
-		'v': {'ѵ', 'v'},
-		'w': {'ԝ', 'w'},
-		'x': {'х', 'x'},
-		'y': {'у', 'y'},
-		'z': {'z', 'z'},
+		'p': {'р'},
+		'q': {'ԛ'},
+		's': {'ѕ'},
+		't': {'т'},
+		'u': {'υ'},
+		'v': {'ѵ'},
+		'w': {'ԝ'},
+		'x': {'х'},
+		'y': {'у'},
+		'z': {},
 	}
 
+	// Replace ASCII characters with homoglyphs
 	for i, c := range f.domain {
 		if replacements, ok := homoglyphs[c]; ok {
 			for _, r := range replacements {

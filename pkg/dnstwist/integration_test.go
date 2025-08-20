@@ -86,8 +86,10 @@ func TestIntegration_RegisteredDomainsOnly(t *testing.T) {
 
 	// All results should have DNS A records (registered domains)
 	for _, result := range results {
-		if len(result.DNS["A"]) == 0 {
-			t.Errorf("Expected registered domain but %s has no A records", result.Domain)
+		hasA := len(result.DNS["A"]) > 0
+		hasNS := len(result.DNS["NS"]) > 0
+		if !hasA && !hasNS {
+			t.Errorf("Expected registered domain but %s has neither A nor NS records", result.Domain)
 		}
 	}
 }

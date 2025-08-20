@@ -9,6 +9,26 @@ import (
 	"github.com/ducksify/godnstwist/internal/scanner"
 )
 
+// containsCyrillic returns true if the string contains Cyrillic characters
+func containsCyrillic(s string) bool {
+	for _, r := range s {
+		if r >= 0x0400 && r <= 0x04FF { // Cyrillic Unicode block
+			return true
+		}
+	}
+	return false
+}
+
+// containsNonASCII returns true if the string contains non-ASCII characters
+func containsNonASCII(s string) bool {
+	for _, r := range s {
+		if r > 127 {
+			return true
+		}
+	}
+	return false
+}
+
 // Options represents the configuration options for the domain permutation engine
 
 // New creates a new domain permutation engine with the given options
@@ -39,13 +59,19 @@ func New(options Options) (*Engine, error) {
 	}
 
 	// Initialize scanner
+	// Enable NS lookups when filtering and either NS is explicitly requested
+	// or when using the default OR logic (no explicit selector).
+	useNSSelector := strings.EqualFold(options.RegisteredBy, "NS")
+	useASelector := strings.EqualFold(options.RegisteredBy, "A")
+	defaultOR := !(useNSSelector || useASelector)
+	nsNeeded := (options.Registered || options.Unregistered) && (useNSSelector || defaultOR)
 	scannerConfig := &scanner.Config{
 		All:         options.All,
 		Banners:     options.Banners,
 		GeoIP:       options.GeoIP,
 		LSH:         options.LSH,
 		MXCheck:     options.MXCheck,
-		NSCheck:     options.NSCheck,
+		NSCheck:     options.NSCheck || nsNeeded,
 		Nameservers: options.Nameservers,
 		PHash:       options.PHash,
 		Screenshots: options.Screenshots,
@@ -78,29 +104,49 @@ func (e *Engine) generate() ([]Result, error) {
 	// Convert to results
 	results := make([]Result, 0, len(domains))
 	for _, domain := range domains {
-		// Filter based on registered/unregistered flags
-		if e.options.Registered {
-			// Only include domains that have DNS A records (registered)
-			if len(domain.DNS["A"]) == 0 {
-				continue
-			}
+		// Determine registration condition
+		recordType := strings.ToUpper(strings.TrimSpace(e.options.RegisteredBy))
+		hasA := len(domain.DNS["A"]) > 0
+		hasNS := len(domain.DNS["NS"]) > 0
+		var isRegistered bool
+		switch recordType {
+		case "A":
+			isRegistered = hasA
+		case "NS":
+			isRegistered = hasNS
+		default:
+			// Default: A OR NS
+			isRegistered = hasA || hasNS
 		}
-		if e.options.Unregistered {
-			// Only include domains that don't have DNS A records (unregistered)
-			if len(domain.DNS["A"]) > 0 {
-				continue
-			}
+
+		// Filter based on registered/unregistered flags
+		if e.options.Registered && !isRegistered {
+			continue
+		}
+		if e.options.Unregistered && isRegistered {
+			continue
+		}
+
+		// Use the Cyrillic field that was already set by the fuzzer
+		isCyrillic := domain.Cyrillic
+
+		// Only set Punycode for non-ASCII domains
+		var punycode string
+		if containsNonASCII(domain.Domain) {
+			punycode = domain.Punycode
 		}
 
 		results = append(results, Result{
-			Fuzzer: domain.Fuzzer,
-			Domain: domain.Domain,
-			DNS:    domain.DNS,
-			GeoIP:  domain.GeoIP,
-			Banner: domain.Banner,
-			Whois:  domain.Whois,
-			LSH:    domain.LSH,
-			PHash:  domain.PHash,
+			Fuzzer:   domain.Fuzzer,
+			Domain:   domain.Domain,
+			Punycode: punycode,
+			Cyrillic: isCyrillic,
+			DNS:      domain.DNS,
+			GeoIP:    domain.GeoIP,
+			Banner:   domain.Banner,
+			Whois:    domain.Whois,
+			LSH:      domain.LSH,
+			PHash:    domain.PHash,
 		})
 	}
 
@@ -113,15 +159,18 @@ func (e *Engine) format(results []Result) (string, error) {
 	domains := make([]*fuzzer.Domain, len(results))
 	for i, r := range results {
 		domains[i] = &fuzzer.Domain{
-			Fuzzer: r.Fuzzer,
-			Domain: r.Domain,
-			DNS:    r.DNS,
-			GeoIP:  r.GeoIP,
-			Banner: r.Banner,
-			Whois:  r.Whois,
-			LSH:    r.LSH,
-			PHash:  r.PHash,
+			Fuzzer:   r.Fuzzer,
+			Domain:   r.Domain,
+			Punycode: r.Punycode,
+			Cyrillic: r.Cyrillic,
+			DNS:      r.DNS,
+			GeoIP:    r.GeoIP,
+			Banner:   r.Banner,
+			Whois:    r.Whois,
+			LSH:      r.LSH,
+			PHash:    r.PHash,
 		}
+
 	}
 
 	// Create formatter

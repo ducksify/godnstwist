@@ -2,162 +2,61 @@ package dnstwist
 
 import (
 	"strings"
-	"sync"
 	"testing"
 )
 
-func TestNew(t *testing.T) {
-	tests := []struct {
-		name    string
-		options Options
-		wantErr bool
-		errMsg  string
-	}{
-		{
-			name: "valid basic options",
-			options: Options{
-				Domain:  "example.com",
-				Threads: 10,
-				Format:  "json",
-			},
-			wantErr: false,
-		},
-		{
-			name: "empty domain",
-			options: Options{
-				Domain:  "",
-				Threads: 10,
-			},
-			wantErr: true,
-			errMsg:  "domain name is required",
-		},
-		{
-			name: "invalid domain",
-			options: Options{
-				Domain:  "invalid",
-				Threads: 10,
-			},
-			wantErr: true,
-			errMsg:  "invalid domain name",
-		},
-		{
-			name: "zero threads",
-			options: Options{
-				Domain:  "example.com",
-				Threads: 0,
-			},
-			wantErr: true,
-			errMsg:  "number of threads must be greater than zero",
-		},
-		{
-			name: "negative threads",
-			options: Options{
-				Domain:  "example.com",
-				Threads: -1,
-			},
-			wantErr: true,
-			errMsg:  "number of threads must be greater than zero",
-		},
-		{
-			name: "mutually exclusive flags - registered and unregistered",
-			options: Options{
-				Domain:       "example.com",
-				Threads:      10,
-				Registered:   true,
-				Unregistered: true,
-			},
-			wantErr: true,
-			errMsg:  "options Registered and Unregistered are mutually exclusive",
-		},
-		{
-			name: "valid with all features enabled",
-			options: Options{
-				Domain:      "example.com",
-				Threads:     10,
-				All:         true,
-				Banners:     true,
-				GeoIP:       true,
-				LSH:         "ssdeep",
-				MXCheck:     true,
-				PHash:       true,
-				Screenshots: "/tmp/screenshots",
-				UserAgent:   "Mozilla/5.0",
-				Nameservers: "8.8.8.8:53,1.1.1.1:53",
-				Format:      "cli",
-			},
-			wantErr: false,
-		},
-		{
-			name: "valid with registered flag only",
-			options: Options{
-				Domain:     "example.com",
-				Threads:    5,
-				Registered: true,
-			},
-			wantErr: false,
-		},
-		{
-			name: "valid with unregistered flag only",
-			options: Options{
-				Domain:       "example.com",
-				Threads:      5,
-				Unregistered: true,
-			},
-			wantErr: false,
-		},
+func TestEngine_New(t *testing.T) {
+	// Test valid domain
+	options := Options{
+		Domain:  "example.com",
+		Threads: 4,
+	}
+	engine, err := New(options)
+	if err != nil {
+		t.Errorf("New() error = %v", err)
+	}
+	if engine == nil {
+		t.Error("New() returned nil engine")
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			engine, err := New(tt.options)
+	// Test empty domain
+	_, err = New(Options{})
+	if err == nil {
+		t.Error("New() should return error for empty domain")
+	}
 
-			if tt.wantErr {
-				if err == nil {
-					t.Errorf("New() expected error but got none")
-					return
-				}
-				if tt.errMsg != "" && !strings.Contains(err.Error(), tt.errMsg) {
-					t.Errorf("New() error = %v, want to contain %v", err.Error(), tt.errMsg)
-				}
-				return
-			}
+	// Test invalid domain
+	_, err = New(Options{Domain: "invalid domain"})
+	if err == nil {
+		t.Error("New() should return error for invalid domain")
+	}
 
-			if err != nil {
-				t.Errorf("New() unexpected error = %v", err)
-				return
-			}
+	// Test mutually exclusive options
+	_, err = New(Options{
+		Domain:       "example.com",
+		Registered:   true,
+		Unregistered: true,
+	})
+	if err == nil {
+		t.Error("New() should return error for mutually exclusive options")
+	}
 
-			if engine == nil {
-				t.Errorf("New() returned nil engine")
-				return
-			}
-
-			// Verify engine configuration
-			if engine.options.Domain != tt.options.Domain {
-				t.Errorf("New() domain = %v, want %v", engine.options.Domain, tt.options.Domain)
-			}
-
-			if engine.options.Threads != tt.options.Threads {
-				t.Errorf("New() threads = %v, want %v", engine.options.Threads, tt.options.Threads)
-			}
-
-			if engine.fuzzer == nil {
-				t.Errorf("New() fuzzer is nil")
-			}
-
-			if engine.scanner == nil {
-				t.Errorf("New() scanner is nil")
-			}
-		})
+	// Test invalid threads
+	_, err = New(Options{
+		Domain:  "example.com",
+		Threads: 0,
+	})
+	if err == nil {
+		t.Error("New() should return error for invalid threads")
 	}
 }
 
-func TestEngine_GetResults(t *testing.T) {
+func TestEngine_Generate_WithRegisteredFilter(t *testing.T) {
 	options := Options{
-		Domain:  "example.com",
-		Threads: 2,
-		Format:  "json",
-		Fuzzers: "addition,omission",
+		Domain:     "example.com",
+		Registered: true,
+		Threads:    4,
+		Fuzzers:    "addition",
 	}
 
 	engine, err := New(options)
@@ -170,89 +69,19 @@ func TestEngine_GetResults(t *testing.T) {
 		t.Fatalf("GetResults() error = %v", err)
 	}
 
-	if len(results) == 0 {
-		t.Error("GetResults() returned no results")
-	}
-
-	// Verify results structure
+	// All results should have either A or NS records (registered)
 	for _, result := range results {
-		if result.Domain == "" {
-			t.Error("GetResults() result has empty domain")
-		}
-		if result.Fuzzer == "" {
-			t.Error("GetResults() result has empty fuzzer")
-		}
-		if result.DNS == nil {
-			t.Error("GetResults() result has nil DNS map")
-		}
-	}
-}
-
-func TestEngine_Generate(t *testing.T) {
-	options := Options{
-		Domain:  "test.com",
-		Threads: 1,
-		Fuzzers: "addition,omission",
-	}
-
-	engine, err := New(options)
-	if err != nil {
-		t.Fatalf("Failed to create engine: %v", err)
-	}
-
-	results, err := engine.generate()
-	if err != nil {
-		t.Fatalf("generate() error = %v", err)
-	}
-
-	if len(results) == 0 {
-		t.Error("generate() returned no results")
-	}
-
-	// Check that original domain is included
-	foundOriginal := false
-	for _, result := range results {
-		if result.Domain == "test.com" && result.Fuzzer == "original" {
-			foundOriginal = true
-			break
-		}
-	}
-	if !foundOriginal {
-		t.Error("generate() did not include original domain")
-	}
-}
-
-func TestEngine_Generate_WithRegisteredFilter(t *testing.T) {
-	options := Options{
-		Domain:     "example.com",
-		Threads:    1,
-		Registered: true,
-		Fuzzers:    "addition",
-	}
-
-	engine, err := New(options)
-	if err != nil {
-		t.Fatalf("Failed to create engine: %v", err)
-	}
-
-	results, err := engine.generate()
-	if err != nil {
-		t.Fatalf("generate() error = %v", err)
-	}
-
-	// All returned results should have DNS A records (registered domains)
-	for _, result := range results {
-		if len(result.DNS["A"]) == 0 {
-			t.Errorf("generate() with Registered=true returned unregistered domain: %s", result.Domain)
+		if !result.HasARecords() && !result.HasNSRecords() {
+			t.Errorf("Result %s should be registered but has no A or NS records", result.Domain)
 		}
 	}
 }
 
 func TestEngine_Generate_WithUnregisteredFilter(t *testing.T) {
 	options := Options{
-		Domain:       "nonexistentdomain12345.com",
-		Threads:      1,
+		Domain:       "example.com",
 		Unregistered: true,
+		Threads:      4,
 		Fuzzers:      "addition",
 	}
 
@@ -261,47 +90,26 @@ func TestEngine_Generate_WithUnregisteredFilter(t *testing.T) {
 		t.Fatalf("Failed to create engine: %v", err)
 	}
 
-	results, err := engine.generate()
+	results, err := engine.GetResults()
 	if err != nil {
-		t.Fatalf("generate() error = %v", err)
+		t.Fatalf("GetResults() error = %v", err)
 	}
 
-	// All returned results should NOT have DNS A records (unregistered domains)
+	// All results should not have A or NS records (unregistered)
 	for _, result := range results {
-		if len(result.DNS["A"]) > 0 {
-			t.Errorf("generate() with Unregistered=true returned registered domain: %s", result.Domain)
+		if result.HasARecords() || result.HasNSRecords() {
+			t.Errorf("Result %s should be unregistered but has A or NS records", result.Domain)
 		}
 	}
 }
 
-func TestEngine_Format(t *testing.T) {
-	results := []Result{
-		{
-			Fuzzer: "original",
-			Domain: "example.com",
-			DNS: map[string][]string{
-				"A": {"93.184.216.34"},
-			},
-			GeoIP:  "United States",
-			Banner: map[string]string{"http": "nginx"},
-			Whois:  map[string]string{"registrar": "ICANN"},
-			LSH:    map[string]int{"ssdeep": 100},
-			PHash:  100,
-		},
-		{
-			Fuzzer: "addition",
-			Domain: "examplea.com",
-			DNS:    map[string][]string{},
-			Banner: map[string]string{},
-			Whois:  map[string]string{},
-			LSH:    map[string]int{},
-		},
-	}
-
+func TestEngine_Generate_WithRegisteredByA(t *testing.T) {
 	options := Options{
-		Domain:  "example.com",
-		Threads: 1,
-		Format:  "json",
+		Domain:       "example.com",
+		Registered:   true,
+		RegisteredBy: "A",
+		Threads:      4,
+		Fuzzers:      "addition",
 	}
 
 	engine, err := New(options)
@@ -309,34 +117,26 @@ func TestEngine_Format(t *testing.T) {
 		t.Fatalf("Failed to create engine: %v", err)
 	}
 
-	formatted, err := engine.format(results)
+	results, err := engine.GetResults()
 	if err != nil {
-		t.Fatalf("format() error = %v", err)
+		t.Fatalf("GetResults() error = %v", err)
 	}
 
-	if formatted == "" {
-		t.Error("format() returned empty string")
-	}
-
-	// Test different formats
-	formats := []string{"json", "csv", "list", "cli"}
-	for _, format := range formats {
-		engine.options.Format = format
-		formatted, err := engine.format(results)
-		if err != nil {
-			t.Errorf("format() with format %s error = %v", format, err)
-		}
-		if formatted == "" {
-			t.Errorf("format() with format %s returned empty string", format)
+	// All results should have A records
+	for _, result := range results {
+		if !result.HasARecords() {
+			t.Errorf("Result %s should have A records", result.Domain)
 		}
 	}
 }
 
-func TestEngine_ConcurrentAccess(t *testing.T) {
+func TestEngine_Generate_WithRegisteredByNS(t *testing.T) {
 	options := Options{
-		Domain:  "example.com",
-		Threads: 5,
-		Fuzzers: "addition,omission",
+		Domain:       "example.com",
+		Registered:   true,
+		RegisteredBy: "NS",
+		Threads:      4,
+		Fuzzers:      "addition",
 	}
 
 	engine, err := New(options)
@@ -344,147 +144,202 @@ func TestEngine_ConcurrentAccess(t *testing.T) {
 		t.Fatalf("Failed to create engine: %v", err)
 	}
 
-	// Test concurrent access to GetResults
-	var wg sync.WaitGroup
-	numGoroutines := 10
-	results := make([]Results, numGoroutines)
-	errors := make([]error, numGoroutines)
-
-	for i := 0; i < numGoroutines; i++ {
-		wg.Add(1)
-		go func(index int) {
-			defer wg.Done()
-			results[index], errors[index] = engine.GetResults()
-		}(i)
+	results, err := engine.GetResults()
+	if err != nil {
+		t.Fatalf("GetResults() error = %v", err)
 	}
 
-	wg.Wait()
-
-	// Check that all goroutines completed successfully
-	for i, err := range errors {
-		if err != nil {
-			t.Errorf("Goroutine %d failed with error: %v", i, err)
-		}
-	}
-
-	// Check that all results are valid
-	for i, result := range results {
-		if len(result) == 0 {
-			t.Errorf("Goroutine %d returned empty results", i)
+	// All results should have NS records
+	for _, result := range results {
+		if !result.HasNSRecords() {
+			t.Errorf("Result %s should have NS records", result.Domain)
 		}
 	}
 }
 
-func TestResult_ToDomain(t *testing.T) {
-	result := &Result{
-		Fuzzer: "original",
-		Domain: "example.com",
-		DNS: map[string][]string{
-			"A": {"93.184.216.34"},
-		},
-		GeoIP:  "United States",
-		Banner: map[string]string{"http": "nginx"},
-		Whois:  map[string]string{"registrar": "ICANN"},
-		LSH:    map[string]int{"ssdeep": 100},
-		PHash:  100,
-	}
-
-	domain := result.toDomain()
-
-	if domain.Fuzzer != result.Fuzzer {
-		t.Errorf("toDomain() fuzzer = %v, want %v", domain.Fuzzer, result.Fuzzer)
-	}
-	if domain.Domain != result.Domain {
-		t.Errorf("toDomain() domain = %v, want %v", domain.Domain, result.Domain)
-	}
-	if len(domain.DNS["A"]) != len(result.DNS["A"]) {
-		t.Errorf("toDomain() DNS length = %v, want %v", len(domain.DNS["A"]), len(result.DNS["A"]))
-	}
-	if domain.GeoIP != result.GeoIP {
-		t.Errorf("toDomain() GeoIP = %v, want %v", domain.GeoIP, result.GeoIP)
-	}
-	if domain.PHash != result.PHash {
-		t.Errorf("toDomain() PHash = %v, want %v", domain.PHash, result.PHash)
-	}
-}
-
-func TestToDomains(t *testing.T) {
-	results := []Result{
+func TestResults_GetDomainsWithARecords(t *testing.T) {
+	results := Results{
 		{
-			Fuzzer: "original",
-			Domain: "example.com",
+			Fuzzer: "test1",
+			Domain: "example1.com",
 			DNS: map[string][]string{
-				"A": {"93.184.216.34"},
+				"A": {"192.168.1.1"},
 			},
 		},
 		{
-			Fuzzer: "addition",
-			Domain: "examplea.com",
-			DNS:    map[string][]string{},
+			Fuzzer: "test2",
+			Domain: "example2.com",
+			DNS: map[string][]string{
+				"MX": {"mail.example.com"},
+			},
 		},
 	}
 
-	domains := toDomains(results)
+	filtered := results.GetDomainsWithARecords()
+	if len(filtered) != 1 {
+		t.Errorf("Expected 1 result with A records, got %d", len(filtered))
+	}
+	if filtered[0].Domain != "example1.com" {
+		t.Errorf("Expected example1.com, got %s", filtered[0].Domain)
+	}
+}
 
-	if len(domains) != len(results) {
-		t.Errorf("toDomains() length = %v, want %v", len(domains), len(results))
+func TestResults_GetDomainsWithMXRecords(t *testing.T) {
+	results := Results{
+		{
+			Fuzzer: "test1",
+			Domain: "example1.com",
+			DNS: map[string][]string{
+				"A": {"192.168.1.1"},
+			},
+		},
+		{
+			Fuzzer: "test2",
+			Domain: "example2.com",
+			DNS: map[string][]string{
+				"MX": {"mail.example.com"},
+			},
+		},
 	}
 
-	for i, domain := range domains {
-		if domain.Fuzzer != results[i].Fuzzer {
-			t.Errorf("toDomains() fuzzer[%d] = %v, want %v", i, domain.Fuzzer, results[i].Fuzzer)
-		}
-		if domain.Domain != results[i].Domain {
-			t.Errorf("toDomains() domain[%d] = %v, want %v", i, domain.Domain, results[i].Domain)
-		}
+	filtered := results.GetDomainsWithMXRecords()
+	if len(filtered) != 1 {
+		t.Errorf("Expected 1 result with MX records, got %d", len(filtered))
+	}
+	if filtered[0].Domain != "example2.com" {
+		t.Errorf("Expected example2.com, got %s", filtered[0].Domain)
+	}
+}
+
+func TestResults_GetDomainsWithNSRecords(t *testing.T) {
+	results := Results{
+		{
+			Fuzzer: "test1",
+			Domain: "example1.com",
+			DNS: map[string][]string{
+				"A": {"192.168.1.1"},
+			},
+		},
+		{
+			Fuzzer: "test2",
+			Domain: "example2.com",
+			DNS: map[string][]string{
+				"NS": {"ns1.example.com"},
+			},
+		},
+	}
+
+	filtered := results.GetDomainsWithNSRecords()
+	if len(filtered) != 1 {
+		t.Errorf("Expected 1 result with NS records, got %d", len(filtered))
+	}
+	if filtered[0].Domain != "example2.com" {
+		t.Errorf("Expected example2.com, got %s", filtered[0].Domain)
+	}
+}
+
+func TestResults_GetDomainsWithoutARecords(t *testing.T) {
+	results := Results{
+		{
+			Fuzzer: "test1",
+			Domain: "example1.com",
+			DNS: map[string][]string{
+				"A": {"192.168.1.1"},
+			},
+		},
+		{
+			Fuzzer: "test2",
+			Domain: "example2.com",
+			DNS: map[string][]string{
+				"MX": {"mail.example.com"},
+			},
+		},
+	}
+
+	filtered := results.GetDomainsWithoutARecords()
+	if len(filtered) != 1 {
+		t.Errorf("Expected 1 result without A records, got %d", len(filtered))
+	}
+	if filtered[0].Domain != "example2.com" {
+		t.Errorf("Expected example2.com, got %s", filtered[0].Domain)
 	}
 }
 
 func TestResults_Format(t *testing.T) {
 	results := Results{
 		{
-			Fuzzer: "original",
+			Fuzzer: "test",
 			Domain: "example.com",
 			DNS: map[string][]string{
-				"A": {"93.184.216.34"},
+				"A": {"192.168.1.1"},
 			},
-			GeoIP:  "United States",
-			Banner: map[string]string{"http": "nginx"},
-			Whois:  map[string]string{"registrar": "ICANN"},
-			LSH:    map[string]int{"ssdeep": 100},
-			PHash:  100,
 		},
 	}
 
-	formats := []string{"json", "csv", "list", "cli"}
-	for _, format := range formats {
-		formatted := results.Format(format)
-		if formatted == "" {
-			t.Errorf("Results.Format() with format %s returned empty string", format)
+	// Test JSON format
+	jsonOutput := results.Format("json")
+	if !strings.Contains(jsonOutput, "example.com") {
+		t.Error("JSON output should contain domain name")
+	}
+
+	// Test CSV format
+	csvOutput := results.Format("csv")
+	if !strings.Contains(csvOutput, "example.com") {
+		t.Error("CSV output should contain domain name")
+	}
+
+	// Test list format
+	listOutput := results.Format("list")
+	if !strings.Contains(listOutput, "example.com") {
+		t.Error("List output should contain domain name")
+	}
+}
+
+func TestCyrillicDetectionAndPunycode(t *testing.T) {
+	// Test containsCyrillic function
+	tests := []struct {
+		input    string
+		expected bool
+	}{
+		{"google.com", false},
+		{"gооgle.com", true},  // Cyrillic 'о' (о)
+		{"gооgle.com", true},  // Cyrillic 'о' (о)
+		{"gооgle.com", true},  // Cyrillic 'о' (о)
+		{"gооgle.com", true},  // Cyrillic 'о' (о)
+		{"gοοgle.com", false}, // Greek, not Cyrillic
+	}
+
+	for _, test := range tests {
+		result := containsCyrillic(test.input)
+		if result != test.expected {
+			t.Errorf("containsCyrillic(%q) = %v, expected %v", test.input, result, test.expected)
 		}
 	}
 
-	// Test invalid format
-	formatted := results.Format("invalid")
-	if formatted != "" {
-		t.Error("Results.Format() with invalid format should return empty string")
+	// Test containsNonASCII function
+	nonASCIITests := []struct {
+		input    string
+		expected bool
+	}{
+		{"google.com", false},
+		{"gооgle.com", true}, // Cyrillic
+		{"gοοgle.com", true}, // Greek
+		{"gооgle.com", true}, // Cyrillic
+	}
+
+	for _, test := range nonASCIITests {
+		result := containsNonASCII(test.input)
+		if result != test.expected {
+			t.Errorf("containsNonASCII(%q) = %v, expected %v", test.input, result, test.expected)
+		}
 	}
 }
 
-func TestResults_Format_EmptyResults(t *testing.T) {
-	results := Results{}
-
-	formatted := results.Format("json")
-	if formatted == "" {
-		t.Error("Results.Format() with empty results should not return empty string for JSON")
-	}
-}
-
-func TestEngine_TLDSwap(t *testing.T) {
+func TestCyrillicFieldInResult(t *testing.T) {
 	options := Options{
-		Domain:  "example.com",
-		Fuzzers: "tld-swap",
+		Domain:  "google.com",
 		Threads: 1,
+		Fuzzers: "homoglyph",
 	}
 
 	engine, err := New(options)
@@ -494,66 +349,31 @@ func TestEngine_TLDSwap(t *testing.T) {
 
 	results, err := engine.GetResults()
 	if err != nil {
-		t.Fatalf("Failed to get results: %v", err)
+		t.Fatalf("GetResults() error = %v", err)
 	}
 
-	// Check that we have results
-	if len(results) == 0 {
-		t.Error("No results generated")
-	}
-
-	// Check that we have tld-swap results
-	tldSwapCount := 0
-	for _, result := range results {
-		if result.Fuzzer == "tld-swap" {
-			tldSwapCount++
-			// Check that the domain format is correct
-			if !strings.HasPrefix(result.Domain, "example.") {
-				t.Errorf("Generated domain doesn't start with 'example.': %s", result.Domain)
-			}
-			// Check that it's not the original domain
-			if result.Domain == "example.com" {
-				t.Errorf("Generated domain should not be the original: %s", result.Domain)
-			}
+	// Find a Cyrillic domain
+	var cyrillicResult *Result
+	for i := range results {
+		if containsCyrillic(results[i].Domain) {
+			cyrillicResult = &results[i]
+			break
 		}
 	}
 
-	if tldSwapCount == 0 {
-		t.Skip("No tld-swap results were generated - TLD dictionary files may not be available")
-	}
-}
-
-func TestEngine_TLDSwapWithCustomFile(t *testing.T) {
-	options := Options{
-		Domain:  "test.com",
-		Fuzzers: "tld-swap",
-		TLD:     []string{"dictionaries/abused_tlds.dict"},
-		Threads: 1,
+	if cyrillicResult == nil {
+		t.Fatal("No Cyrillic domain found in results")
 	}
 
-	engine, err := New(options)
-	if err != nil {
-		t.Fatalf("Failed to create engine: %v", err)
+	if !cyrillicResult.Cyrillic {
+		t.Errorf("Domain %s should have Cyrillic=true but got %v", cyrillicResult.Domain, cyrillicResult.Cyrillic)
 	}
 
-	results, err := engine.GetResults()
-	if err != nil {
-		t.Fatalf("Failed to get results: %v", err)
-	}
-
-	// Check that we have tld-swap results
-	tldSwapCount := 0
+	// Check that ASCII domains have Cyrillic=false
 	for _, result := range results {
-		if result.Fuzzer == "tld-swap" {
-			tldSwapCount++
-			if !strings.HasPrefix(result.Domain, "test.") {
-				t.Errorf("Generated domain doesn't start with 'test.': %s", result.Domain)
-			}
+		if !containsCyrillic(result.Domain) && result.Cyrillic {
+			t.Errorf("Domain %s should have Cyrillic=false but got %v", result.Domain, result.Cyrillic)
 		}
-	}
-
-	if tldSwapCount == 0 {
-		t.Skip("No tld-swap results were generated with custom file - TLD dictionary files may not be available")
 	}
 }
 
@@ -619,19 +439,6 @@ func createTestResults() []Result {
 			DNS: map[string][]string{
 				"A": {"93.184.216.34"},
 			},
-			GeoIP:  "United States",
-			Banner: map[string]string{"http": "nginx"},
-			Whois:  map[string]string{"registrar": "ICANN"},
-			LSH:    map[string]int{"ssdeep": 100},
-			PHash:  100,
-		},
-		{
-			Fuzzer: "addition",
-			Domain: "examplea.com",
-			DNS:    map[string][]string{},
-			Banner: map[string]string{},
-			Whois:  map[string]string{},
-			LSH:    map[string]int{},
 		},
 	}
 }

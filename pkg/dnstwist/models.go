@@ -51,6 +51,10 @@ type Options struct {
 	// Unregistered shows only unregistered domain names
 	Unregistered bool
 
+	// RegisteredBy selects which DNS record type is used to decide registration.
+	// Supported values: "A", "NS". Defaults to "A" when empty.
+	RegisteredBy string
+
 	// PHash renders web pages and evaluates visual similarity
 	PHash bool
 
@@ -78,14 +82,16 @@ type Options struct {
 
 // Result represents a single domain permutation result
 type Result struct {
-	Fuzzer string              `json:"fuzzer"`
-	Domain string              `json:"domain"`
-	DNS    map[string][]string `json:"dns,omitempty"`
-	GeoIP  string              `json:"geoip,omitempty"`
-	Banner map[string]string   `json:"banner,omitempty"`
-	Whois  map[string]string   `json:"whois,omitempty"`
-	LSH    map[string]int      `json:"lsh,omitempty"`
-	PHash  int                 `json:"phash,omitempty"`
+	Fuzzer   string              `json:"fuzzer"`
+	Domain   string              `json:"domain"`
+	Punycode string              `json:"punycode,omitempty"`
+	Cyrillic bool                `json:"cyrillic,omitempty"`
+	DNS      map[string][]string `json:"dns,omitempty"`
+	GeoIP    string              `json:"geoip,omitempty"`
+	Banner   map[string]string   `json:"banner,omitempty"`
+	Whois    map[string]string   `json:"whois,omitempty"`
+	LSH      map[string]int      `json:"lsh,omitempty"`
+	PHash    int                 `json:"phash,omitempty"`
 }
 
 // GetARecords returns A records for the domain
@@ -177,14 +183,16 @@ func (r Results) GetDomainsWithoutARecords() Results {
 // ToDomain converts a Result to a fuzzer.Domain
 func (r *Result) toDomain() *fuzzer.Domain {
 	return &fuzzer.Domain{
-		Fuzzer: r.Fuzzer,
-		Domain: r.Domain,
-		DNS:    r.DNS,
-		GeoIP:  r.GeoIP,
-		Banner: r.Banner,
-		Whois:  r.Whois,
-		LSH:    r.LSH,
-		PHash:  r.PHash,
+		Fuzzer:   r.Fuzzer,
+		Domain:   r.Domain,
+		Punycode: r.Punycode,
+		Cyrillic: r.Cyrillic,
+		DNS:      r.DNS,
+		GeoIP:    r.GeoIP,
+		Banner:   r.Banner,
+		Whois:    r.Whois,
+		LSH:      r.LSH,
+		PHash:    r.PHash,
 	}
 }
 

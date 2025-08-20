@@ -97,7 +97,12 @@ func (s *Scanner) scanDomain(domain *fuzzer.Domain) *fuzzer.Domain {
 
 	// HTTP banner
 	if s.config.Banners && len(domain.DNS["A"]) > 0 {
-		if banner, err := s.getHTTPBanner(domain.DNS["A"][0], domain.Domain); err == nil {
+		// Use Punycode for Host header if available, otherwise use original domain
+		hostHeader := domain.Domain
+		if domain.Punycode != "" {
+			hostHeader = domain.Punycode
+		}
+		if banner, err := s.getHTTPBanner(domain.DNS["A"][0], hostHeader); err == nil {
 			domain.Banner["http"] = banner
 		}
 	}
@@ -122,8 +127,14 @@ func (s *Scanner) scanDomain(domain *fuzzer.Domain) *fuzzer.Domain {
 }
 
 func (s *Scanner) lookupA(domain *fuzzer.Domain) error {
+	// Use Punycode for DNS resolution if available, otherwise use original domain
+	dnsDomain := domain.Domain
+	if domain.Punycode != "" {
+		dnsDomain = domain.Punycode
+	}
+
 	m := new(dns.Msg)
-	m.SetQuestion(dns.Fqdn(domain.Domain), dns.TypeA)
+	m.SetQuestion(dns.Fqdn(dnsDomain), dns.TypeA)
 	m.RecursionDesired = true
 
 	r, _, err := s.dnsClient.Exchange(m, s.nameserver)
@@ -145,8 +156,14 @@ func (s *Scanner) lookupA(domain *fuzzer.Domain) error {
 }
 
 func (s *Scanner) lookupMX(domain *fuzzer.Domain) error {
+	// Use Punycode for DNS resolution if available, otherwise use original domain
+	dnsDomain := domain.Domain
+	if domain.Punycode != "" {
+		dnsDomain = domain.Punycode
+	}
+
 	m := new(dns.Msg)
-	m.SetQuestion(dns.Fqdn(domain.Domain), dns.TypeMX)
+	m.SetQuestion(dns.Fqdn(dnsDomain), dns.TypeMX)
 	m.RecursionDesired = true
 
 	r, _, err := s.dnsClient.Exchange(m, s.nameserver)
@@ -168,8 +185,14 @@ func (s *Scanner) lookupMX(domain *fuzzer.Domain) error {
 }
 
 func (s *Scanner) lookupNS(domain *fuzzer.Domain) error {
+	// Use Punycode for DNS resolution if available, otherwise use original domain
+	dnsDomain := domain.Domain
+	if domain.Punycode != "" {
+		dnsDomain = domain.Punycode
+	}
+
 	m := new(dns.Msg)
-	m.SetQuestion(dns.Fqdn(domain.Domain), dns.TypeNS)
+	m.SetQuestion(dns.Fqdn(dnsDomain), dns.TypeNS)
 	m.RecursionDesired = true
 
 	r, _, err := s.dnsClient.Exchange(m, s.nameserver)

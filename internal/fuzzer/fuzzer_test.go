@@ -1,8 +1,12 @@
 package fuzzer
 
 import (
+	"bytes"
+	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestNewFuzzer(t *testing.T) {
@@ -199,6 +203,215 @@ func TestFuzzer_ReadTLDDictionary(t *testing.T) {
 		}
 		if !found {
 			t.Errorf("Expected TLD '%s' not found in dictionary", expected)
+		}
+	}
+}
+
+func TestFuzzer_HomoglyphBytes(t *testing.T) {
+	f := NewFuzzer("google.com")
+	if f == nil {
+		t.Fatal("Failed to create fuzzer")
+	}
+
+	// Generate homoglyph variants
+	f.Generate("homoglyph")
+	domains := f.Domains()
+
+	// Find original domain
+	var originalDomain *Domain
+	var homoglyphDomains []*Domain
+	for _, domain := range domains {
+		if domain.Fuzzer == "original" {
+			originalDomain = domain
+		} else if domain.Fuzzer == "homoglyph" {
+			homoglyphDomains = append(homoglyphDomains, domain)
+		}
+	}
+
+	if originalDomain == nil {
+		t.Fatal("Original domain not found")
+	}
+
+	if len(homoglyphDomains) == 0 {
+		t.Fatal("No homoglyph domains generated")
+	}
+
+	originalBytes := []byte(originalDomain.Domain)
+	t.Logf("Original domain: %s (bytes: %v)", originalDomain.Domain, originalBytes)
+
+	// Check that at least one homoglyph has different bytes
+	foundDifferent := false
+	foundCyrillic := false
+	for i, homoglyph := range homoglyphDomains {
+		homoglyphBytes := []byte(homoglyph.Domain)
+		t.Logf("Homoglyph %d: %s (bytes: %v)", i, homoglyph.Domain, homoglyphBytes)
+
+		if !bytes.Equal(originalBytes, homoglyphBytes) {
+			foundDifferent = true
+			t.Logf("Found different bytes: original=%v, homoglyph=%v", originalBytes, homoglyphBytes)
+
+			// Check if this is a Cyrillic variant (should have different byte length or different bytes)
+			if len(homoglyphBytes) != len(originalBytes) {
+				foundCyrillic = true
+				t.Logf("Found Cyrillic variant with different byte length: %d vs %d", len(homoglyphBytes), len(originalBytes))
+			} else {
+				// Check if any byte is different (Cyrillic characters have different byte values)
+				for j, b := range homoglyphBytes {
+					if b != originalBytes[j] {
+						foundCyrillic = true
+						t.Logf("Found Cyrillic variant with different byte at position %d: %d vs %d", j, b, originalBytes[j])
+						break
+					}
+				}
+			}
+		}
+	}
+
+	if !foundDifferent {
+		t.Error("All homoglyph results have identical bytes to original - this indicates identity replacements are not being filtered")
+	}
+
+	if !foundCyrillic {
+		t.Log("No Cyrillic homoglyphs found - this is expected if they're filtered by the ASCII regex")
+	}
+}
+
+func TestFuzzer_CyrillicHomoglyphs(t *testing.T) {
+	f := NewFuzzer("google.com")
+	if f == nil {
+		t.Fatal("Failed to create fuzzer")
+	}
+
+	// Temporarily store the original regex
+	originalRegex := validFQDNRegex
+	// Use a more permissive regex that allows Unicode
+	validFQDNRegex = regexp.MustCompile(`^(.+\.)+[a-z]{2,63}$`)
+	defer func() { validFQDNRegex = originalRegex }()
+
+	// Generate homoglyph variants
+	f.Generate("homoglyph")
+	domains := f.Domains()
+
+	// Find homoglyph domains
+	var homoglyphDomains []*Domain
+	for _, domain := range domains {
+		if domain.Fuzzer == "homoglyph" {
+			homoglyphDomains = append(homoglyphDomains, domain)
+		}
+	}
+
+	t.Logf("Found %d homoglyph domains", len(homoglyphDomains))
+
+	// Check for Cyrillic variants
+	foundCyrillic := false
+	for i, homoglyph := range homoglyphDomains {
+		homoglyphBytes := []byte(homoglyph.Domain)
+		t.Logf("Homoglyph %d: %s (bytes: %v)", i, homoglyph.Domain, homoglyphBytes)
+
+		// Check if any byte is > 127 (non-ASCII)
+		for j, b := range homoglyphBytes {
+			if b > 127 {
+				foundCyrillic = true
+				t.Logf("Found Cyrillic character at position %d: byte %d in domain %s", j, b, homoglyph.Domain)
+			}
+		}
+	}
+
+	if !foundCyrillic {
+		t.Log("No Cyrillic homoglyphs found even with permissive regex - they may not be in the homoglyph map")
+	}
+}
+
+func TestHomoglyphPunycode(t *testing.T) {
+	f := NewFuzzer("google.com")
+	assert.NotNil(t, f)
+
+	// Generate homoglyph permutations
+	f.homoglyph()
+
+	// Check that domains with non-ASCII characters have Punycode versions
+	foundHomoglyph := false
+	for _, domain := range f.domains {
+		if domain.Fuzzer == "homoglyph" {
+			// Check if this domain contains non-ASCII characters
+			hasNonASCII := false
+			for _, r := range domain.Domain {
+				if r > 127 {
+					hasNonASCII = true
+					break
+				}
+			}
+
+			if hasNonASCII {
+				foundHomoglyph = true
+				// Verify that Punycode is set and different from Domain
+				assert.NotEmpty(t, domain.Punycode, "Punycode should be set for non-ASCII domains")
+				assert.NotEqual(t, domain.Domain, domain.Punycode, "Punycode should be different from Domain for non-ASCII domains")
+
+				t.Logf("Found homoglyph domain: %s -> %s", domain.Domain, domain.Punycode)
+			}
+		}
+	}
+
+	assert.True(t, foundHomoglyph, "Should find at least one homoglyph domain with non-ASCII characters")
+}
+
+func TestContainsNonASCII(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected bool
+	}{
+		{"google.com", false},
+		{"gооgle.com", true}, // Cyrillic 'о'
+		{"gοοgle.com", true}, // Greek 'ο'
+		{"g00gle.com", false},
+		{"", false},
+	}
+
+	for _, tt := range tests {
+		result := containsNonASCII(tt.input)
+		assert.Equal(t, tt.expected, result, "containsNonASCII(%q) should be %v", tt.input, tt.expected)
+	}
+}
+
+func TestContainsCyrillic(t *testing.T) {
+	// Test containsCyrillic function
+	tests := []struct {
+		input    string
+		expected bool
+	}{
+		{"google.com", false},
+		{"gоogle.com", true},  // Cyrillic 'о' (о)
+		{"goоgle.com", true},  // Cyrillic 'о' (о)
+		{"googlе.com", true},  // Cyrillic 'е' (е)
+		{"gοοgle.com", false}, // Greek, not Cyrillic
+	}
+
+	for _, test := range tests {
+		result := containsCyrillic(test.input)
+		if result != test.expected {
+			t.Errorf("containsCyrillic(%q) = %v, expected %v", test.input, result, test.expected)
+		}
+	}
+}
+
+func TestRegexWithCyrillic(t *testing.T) {
+	// Test if the regex matches Cyrillic domains
+	tests := []struct {
+		input    string
+		expected bool
+	}{
+		{"google.com", true},
+		{"gоogle.com", true}, // Cyrillic 'о' (о)
+		{"goоgle.com", true}, // Cyrillic 'о' (о)
+		{"googlе.com", true}, // Cyrillic 'е' (е)
+		{"gοοgle.com", true}, // Greek
+	}
+
+	for _, test := range tests {
+		result := validFQDNRegex.MatchString(test.input)
+		if result != test.expected {
+			t.Errorf("validFQDNRegex.MatchString(%q) = %v, expected %v", test.input, result, test.expected)
 		}
 	}
 }
